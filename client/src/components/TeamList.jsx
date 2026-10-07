@@ -16,7 +16,7 @@ export default function TeamList() {
   useEffect(() => { load() }, [])
 
   const create = async ({ name, format, summary }) => {
-    const team = await api.create({ name, format, summary, mons: [] })
+    const team = await api.create({ name, format, summary })
     window.location.hash = `#/team/${team._id}`
   }
 
@@ -90,7 +90,10 @@ export default function TeamList() {
                 </div>
                 <div className="team-card-body">
                   <h2>{team.name}</h2>
-                  {team.format && <p className="format">{team.format}</p>}
+                  <p className="format">
+                    {team.format}
+                    {team.versions?.length > 1 && <span className="version-chip">v{team.versions.at(-1).number}</span>}
+                  </p>
                   {team.summary && <p className="summary">{team.summary}</p>}
                   <div className="card-record">
                     <span>{rec.total ? `${rec.w}–${rec.l}` : 'No games yet'}</span>

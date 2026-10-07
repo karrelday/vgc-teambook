@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { emptyPlan, record } from '../lib/model'
+import { planMatches } from '../lib/stats'
 import MonImage from './MonImage'
 import { Field, Modal } from './ui'
 
@@ -19,7 +20,7 @@ export default function GamePlans({ team, save }) {
   }
 
   const remove = id => {
-    if (!confirm('Delete this game plan? Logged games keep their result but lose the link.')) return
+    if (!confirm('Delete this game plan?')) return
     save({ ...team, plans: team.plans.filter(p => p.id !== id) })
     setEditing(null)
   }
@@ -45,7 +46,7 @@ export default function GamePlans({ team, save }) {
             <span>Leads</span><span>Back</span><span>Strategy</span>
           </div>
           {team.plans.map(p => {
-            const rec = record(team.matches.filter(m => m.planId === p.id))
+            const rec = record(team.matches.filter(m => planMatches(p, m)))
             return (
               <article className="plan" key={p.id}>
                 <div className="plan-leads">
@@ -61,7 +62,7 @@ export default function GamePlans({ team, save }) {
                   <p className="prewrap">{p.strategy || <span className="muted">No strategy written yet.</span>}</p>
                   <div className="plan-foot">
                     <span className={rec.total ? 'rec' : 'muted'}>
-                      {rec.total ? `${rec.w}–${rec.l} with this plan (${rec.rate}%)` : 'No games logged with this plan'}
+                      {rec.total ? `${rec.w}–${rec.l} with these leads (${rec.rate}%)` : 'No games logged with these leads yet'}
                     </span>
                     <button className="btn ghost sm" onClick={() => setEditing(p)}>Edit</button>
                   </div>

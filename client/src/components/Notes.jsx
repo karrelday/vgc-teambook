@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 const FIELDS = [
   ['howItPlays', 'How the team plays', 'Win conditions, speed control, what you want to happen each game'],
-  ['weaknesses', 'Weaknesses and threats', 'Matchups that give you trouble and how you play around them'],
+  ['weaknesses', 'General weaknesses', 'Structural problems: speed control, Fairy resists, lack of damage. Specific Pokémon go in Threats.'],
   ['piloting', 'Piloting notes', 'What you have learned from actually playing it: mistakes, reads, habits'],
 ]
 

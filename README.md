@@ -1,6 +1,15 @@
 # Teambook
 
-Document VGC teams: rosters, spreads, game plans, notes, and a win/loss log.
+Document Pokémon Champions VGC teams: rosters with Stat Point spreads, game plans, threats,
+notes, version history, and a match log that turns into real stats.
+
+## Features
+
+- **Team versions.** Lock a version before changing the team; games and records stay tied to the roster you actually played.
+- **Match log.** Tap your bring and leads, type their team preview. Same opponent button for Bo3.
+- **Stats.** Win rate per Pokémon brought and led, per lead pair, and against every Pokémon you've faced.
+- **Threats.** How to play into specific Pokémon, with your record against each filled in automatically.
+- **Share card.** Export the team as a PNG to post or send to friends.
 
 Vite + React frontend, Express + MongoDB backend.
 

@@ -21,4 +21,5 @@ export const api = {
   update: (id, data) => request(`${BASE}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   remove: id => request(`${BASE}/${id}`, { method: 'DELETE' }),
   duplicate: id => request(`${BASE}/${id}/duplicate`, { method: 'POST' }),
+  species: () => request('/api/species'),
 }

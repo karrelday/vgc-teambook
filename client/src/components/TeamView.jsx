@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { record } from '../lib/model'
 import MonImage from './MonImage'
 import TeamInfoForm from './TeamInfoForm'
 import Roster from './Roster'
 import GamePlans from './GamePlans'
+import Threats from './Threats'
 import Notes from './Notes'
 import Matches from './Matches'
+import Stats from './Stats'
+import VersionBar from './Versions'
+import ShareCard from './ShareCard'
 import { Modal } from './ui'
 
 const TABS = [
   ['team', 'Team'],
   ['plans', 'Game plans'],
+  ['threats', 'Threats'],
   ['notes', 'Notes'],
   ['matches', 'Matches'],
+  ['stats', 'Stats'],
 ]
 
 export default function TeamView({ id }) {
@@ -21,10 +27,12 @@ export default function TeamView({ id }) {
   const [error, setError] = useState('')
   const [tab, setTab] = useState('team')
   const [status, setStatus] = useState('')
-  const [editingInfo, setEditingInfo] = useState(false)
+  const [modal, setModal] = useState(null)
+  const [knownSpecies, setKnownSpecies] = useState([])
 
   useEffect(() => {
     api.get(id).then(setTeam).catch(e => setError(e.message))
+    api.species().then(setKnownSpecies).catch(() => {})
   }, [id])
 
   // Local state is the source of truth; every change is written straight to the API
@@ -38,6 +46,20 @@ export default function TeamView({ id }) {
       setStatus(`Not saved: ${e.message}`)
     }
   }, [id])
+
+  const rememberSpecies = useCallback(list => {
+    setKnownSpecies(prev => {
+      const have = new Set(prev.map(s => s.toLowerCase()))
+      const add = list.filter(s => s && !have.has(s.toLowerCase()))
+      return add.length ? [...prev, ...add].sort((a, b) => a.localeCompare(b)) : prev
+    })
+  }, [])
+
+  const species = useMemo(() => {
+    const map = new Map(knownSpecies.map(s => [s.toLowerCase(), s]))
+    for (const m of team?.mons || []) if (m.species) map.set(m.species.toLowerCase(), m.species)
+    return [...map.values()]
+  }, [knownSpecies, team?.mons])
 
   if (error) {
     return (
@@ -57,8 +79,10 @@ export default function TeamView({ id }) {
     a.href = URL.createObjectURL(blob)
     a.download = `${team.name.replace(/[^\w-]+/g, '_')}.json`
     a.click()
-    URL.revokeObjectURL(a.href)
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
+
+  const tabProps = { team, save, species, rememberSpecies }
 
   return (
     <>
@@ -84,8 +108,11 @@ export default function TeamView({ id }) {
         ))}
       </div>
 
+      <VersionBar team={team} save={save} />
+
       <div className="toolbar">
-        <button className="btn sm" onClick={() => setEditingInfo(true)}>Edit details</button>
+        <button className="btn sm" onClick={() => setModal('info')}>Edit details</button>
+        <button className="btn sm" onClick={() => setModal('share')} disabled={!team.mons.length}>Share card</button>
         <button className="btn sm" onClick={downloadBackup}>Download team file</button>
         <span className={`status ${status.startsWith('Not') ? 'bad' : ''}`} aria-live="polite">{status}</span>
       </div>
@@ -96,29 +123,33 @@ export default function TeamView({ id }) {
             className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
             {label}
             {key === 'matches' && rec.total > 0 && <span className="tab-count">{rec.total}</span>}
+            {key === 'threats' && team.threats.length > 0 && <span className="tab-count">{team.threats.length}</span>}
           </button>
         ))}
       </nav>
 
       <div className="tab-panel" role="tabpanel">
-        {tab === 'team' && <Roster team={team} save={save} />}
-        {tab === 'plans' && <GamePlans team={team} save={save} />}
-        {tab === 'notes' && <Notes team={team} save={save} />}
-        {tab === 'matches' && <Matches team={team} save={save} />}
+        {tab === 'team' && <Roster {...tabProps} />}
+        {tab === 'plans' && <GamePlans {...tabProps} />}
+        {tab === 'threats' && <Threats {...tabProps} />}
+        {tab === 'notes' && <Notes {...tabProps} />}
+        {tab === 'matches' && <Matches {...tabProps} />}
+        {tab === 'stats' && <Stats {...tabProps} />}
       </div>
 
-      {editingInfo && (
-        <Modal title="Edit team details" onClose={() => setEditingInfo(false)}>
+      {modal === 'info' && (
+        <Modal title="Edit team details" onClose={() => setModal(null)}>
           <TeamInfoForm
             initial={team}
             submitLabel="Save details"
             onSubmit={async v => {
               await save({ ...team, name: v.name, format: v.format, summary: v.summary })
-              setEditingInfo(false)
+              setModal(null)
             }}
           />
         </Modal>
       )}
+      {modal === 'share' && <ShareCard team={team} onClose={() => setModal(null)} />}
     </>
   )
 }

@@ -3,12 +3,14 @@ import express from 'express'
 import cors from 'cors'
 import mongoose from 'mongoose'
 import teams from './routes/teams.js'
+import meta from './routes/meta.js'
 
 const app = express()
 app.use(cors())
 // Images are stored as compressed data URLs inside team documents
-app.use(express.json({ limit: '15mb' }))
+app.use(express.json({ limit: '25mb' }))
 app.use('/api/teams', teams)
+app.use('/api', meta)
 
 app.use((err, req, res, next) => {
   console.error(err)

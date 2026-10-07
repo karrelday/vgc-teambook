@@ -15,11 +15,22 @@ const monSchema = new Schema(
     ability: String,
     teraType: String,
     nature: String,
-    level: { type: Number, default: 50 },
     moves: [String],
-    spread: statBlock, // EVs / stat points, whatever the format uses
+    spread: statBlock, // Stat Points
     stats: statBlock,  // final stats, filled in by hand
     notes: String,
+  },
+  { _id: false }
+)
+
+// A version's `mons` is its frozen roster. The current (last) version's roster is team.mons.
+const versionSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    number: { type: Number, required: true },
+    note: String,
+    startedAt: String,
+    mons: [monSchema],
   },
   { _id: false }
 )
@@ -40,10 +51,22 @@ const matchSchema = new Schema(
     id: { type: String, required: true },
     result: { type: String, enum: ['W', 'L'], required: true },
     date: String, // YYYY-MM-DD
-    opponent: String,
-    planId: String,
     event: String,
+    opponentName: String,
+    versionId: String,
+    brought: [String],      // up to 4 mon ids
+    leads: [String],        // 2 of the brought mon ids
+    opponentTeam: [String], // species from team preview
     notes: String,
+  },
+  { _id: false }
+)
+
+const threatSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    species: { type: String, required: true },
+    howToPlay: String,
   },
   { _id: false }
 )
@@ -57,8 +80,10 @@ const teamSchema = new Schema(
       type: [monSchema],
       validate: { validator: v => v.length <= 6, message: 'A team can have at most 6 Pokémon' },
     },
+    versions: [versionSchema],
     plans: [planSchema],
     matches: [matchSchema],
+    threats: [threatSchema],
     notes: { howItPlays: String, weaknesses: String, piloting: String },
   },
   { timestamps: true }

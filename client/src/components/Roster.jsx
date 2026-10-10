@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { emptyMon } from '../lib/model'
+import { currentVersion, norm, startNewVersion } from '../lib/stats'
 import MonCard from './MonCard'
 import MonEditor from './MonEditor'
 
@@ -8,8 +9,18 @@ export default function Roster({ team, save }) {
   const isNew = editing && !team.mons.some(m => m.id === editing.id)
 
   const upsert = mon => {
-    const mons = isNew ? [...team.mons, mon] : team.mons.map(m => (m.id === mon.id ? mon : m))
-    save({ ...team, mons })
+    let base = team
+    const old = team.mons.find(m => m.id === mon.id)
+    const cur = currentVersion(team)
+    const swapped = old && norm(old.species) !== norm(mon.species)
+    const hasGames = cur && team.matches.some(m => m.versionId === cur.id)
+    // Swapping a Pokémon mid-version would rewrite the games already logged with it
+    if (swapped && hasGames &&
+        confirm(`You have games logged on v${cur.number}. Start v${cur.number + 1} for ${old.species} → ${mon.species}?\n\nOK = new version (recommended). Cancel = change v${cur.number} in place.`)) {
+      base = startNewVersion(team, `${mon.species} over ${old.species}`)
+    }
+    const mons = isNew ? [...base.mons, mon] : base.mons.map(m => (m.id === mon.id ? mon : m))
+    save({ ...base, mons })
     setEditing(null)
   }
 

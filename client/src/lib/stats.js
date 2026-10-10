@@ -1,4 +1,4 @@
-import { STATS, record } from './model'
+import { STATS, record, uid } from './model'
 
 export const norm = s => (s || '').trim().toLowerCase()
 export const pct = (w, n) => (n ? Math.round((w / n) * 100) : null)
@@ -20,6 +20,19 @@ export function monIndex(team) {
   for (const v of team.versions || []) for (const m of v.mons || []) idx[m.id] = m
   for (const m of team.mons) idx[m.id] = m
   return idx
+}
+
+/** The mon a game actually used: looked up in that game's version first. */
+export function monAt(team, versionId, id) {
+  return rosterOf(team, versionId).find(m => m.id === id) || monIndex(team)[id]
+}
+
+/** Freeze the current roster into the current version and start the next one. Returns a new team. */
+export function startNewVersion(team, note = '') {
+  const cur = currentVersion(team)
+  const versions = team.versions.map(v => (v.id === cur.id ? { ...v, mons: structuredClone(team.mons) } : v))
+  versions.push({ id: uid(), number: cur.number + 1, note: note.trim(), startedAt: new Date().toISOString(), mons: [] })
+  return { ...team, versions }
 }
 
 export const matchesIn = (team, versionId) =>
@@ -73,12 +86,15 @@ export function planMatches(plan, game) {
 /* ---------- Match stats ---------- */
 
 export function monStats(team, matches) {
-  const idx = monIndex(team)
   const rows = {}
   const logged = matches.filter(m => m.brought?.length)
   for (const g of logged) {
     for (const id of g.brought) {
-      const r = (rows[id] ||= { id, mon: idx[id], games: 0, w: 0, leadGames: 0, leadW: 0 })
+      const mon = monAt(team, g.versionId, id)
+      if (!mon) continue
+      // Same slot edited into a different species (Basculegion -> Milotic) gets its own row
+      const key = `${id}|${norm(mon.species)}`
+      const r = (rows[key] ||= { id: key, mon, games: 0, w: 0, leadGames: 0, leadW: 0 })
       r.games++
       if (g.result === 'W') r.w++
       if (g.leads?.includes(id)) {
@@ -87,18 +103,18 @@ export function monStats(team, matches) {
       }
     }
   }
-  return {
-    logged: logged.length,
-    rows: Object.values(rows).filter(r => r.mon).sort((a, b) => b.games - a.games),
-  }
+  return { logged: logged.length, rows: Object.values(rows).sort((a, b) => b.games - a.games) }
 }
 
-export function leadStats(matches) {
+export function leadStats(team, matches) {
   const groups = {}
   const logged = matches.filter(m => m.leads?.length === 2)
   for (const g of logged) {
-    const ids = [...g.leads].sort()
-    const r = (groups[ids.join('|')] ||= { key: ids.join('|'), ids, games: 0, w: 0 })
+    const mons = g.leads.map(id => monAt(team, g.versionId, id)).filter(Boolean)
+    if (mons.length !== 2) continue
+    mons.sort((a, b) => a.species.localeCompare(b.species))
+    const key = mons.map(m => norm(m.species)).join('|')
+    const r = (groups[key] ||= { key, mons, games: 0, w: 0 })
     r.games++
     if (g.result === 'W') r.w++
   }

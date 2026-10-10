@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { record, uid } from '../lib/model'
-import { currentVersion, matchesIn, monIndex, newestFirst, rosterOf } from '../lib/stats'
+import { currentVersion, matchesIn, monAt, newestFirst, rosterOf } from '../lib/stats'
 import BringPicker from './BringPicker'
 import MonImage from './MonImage'
 import SpeciesInput from './SpeciesInput'
@@ -17,7 +17,6 @@ export default function Matches({ team, save, species, rememberSpecies }) {
   const [versionId, setVersionId] = useState('')
   const [editing, setEditing] = useState(null)
   const cur = currentVersion(team)
-  const idx = useMemo(() => monIndex(team), [team])
 
   const shown = newestFirst(matchesIn(team, versionId))
   const last = newestFirst(team.matches)[0]
@@ -88,8 +87,8 @@ export default function Matches({ team, save, species, rememberSpecies }) {
           <div className="empty"><p>Games you log show up here, newest first.</p></div>
         ) : (
           shown.map(m => {
-            const leads = (m.leads || []).map(id => idx[id]).filter(Boolean)
-            const back = (m.brought || []).filter(id => !m.leads?.includes(id)).map(id => idx[id]).filter(Boolean)
+            const leads = (m.leads || []).map(id => monAt(team, m.versionId, id)).filter(Boolean)
+            const back = (m.brought || []).filter(id => !m.leads?.includes(id)).map(id => monAt(team, m.versionId, id)).filter(Boolean)
             const v = versionNumber(m.versionId)
             return (
               <article className="match-row" key={m.id}>

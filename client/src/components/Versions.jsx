@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { record, uid } from '../lib/model'
-import { currentVersion, diffMons, rosterOf } from '../lib/stats'
+import { record } from '../lib/model'
+import { currentVersion, diffMons, rosterOf, startNewVersion } from '../lib/stats'
 import MonImage from './MonImage'
 import { Field, Modal } from './ui'
 
@@ -14,10 +14,7 @@ export default function VersionBar({ team, save }) {
 
   const startNew = e => {
     e.preventDefault()
-    // Freeze the current roster into the version that's ending
-    const versions = team.versions.map(v => (v.id === cur.id ? { ...v, mons: structuredClone(team.mons) } : v))
-    versions.push({ id: uid(), number: cur.number + 1, note: note.trim(), startedAt: new Date().toISOString(), mons: [] })
-    save({ ...team, versions })
+    save(startNewVersion(team, note))
     setNote('')
     setMode(null)
   }

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { record } from '../lib/model'
-import { currentVersion, leadStats, matchesIn, monIndex, monStats, opponentStats, pct } from '../lib/stats'
+import { currentVersion, leadStats, matchesIn, monStats, opponentStats, pct } from '../lib/stats'
 import MonImage from './MonImage'
 import VersionFilter from './VersionFilter'
 
@@ -21,10 +21,9 @@ export default function Stats({ team }) {
   const [showAll, setShowAll] = useState(false)
 
   const matches = matchesIn(team, versionId)
-  const idx = useMemo(() => monIndex(team), [team])
   const rec = record(matches)
   const mons = monStats(team, matches)
-  const leads = leadStats(matches)
+  const leads = leadStats(team, matches)
   const opp = opponentStats(matches)
 
   const oppRows = [...opp.rows].sort((a, b) =>
@@ -87,9 +86,9 @@ export default function Stats({ team }) {
               {leads.rows.map(r => (
                 <li key={r.key}>
                   <span className="pair">
-                    {r.ids.map(id => idx[id] && <MonImage key={id} mon={idx[id]} className="md" />)}
+                    {r.mons.map(m => <MonImage key={m.id} mon={m} className="md" />)}
                   </span>
-                  <span className="lead-names">{r.ids.map(id => idx[id]?.species).filter(Boolean).join(' + ')}</span>
+                  <span className="lead-names">{r.mons.map(m => m.species).join(' + ')}</span>
                   <span className="lead-rec">{r.w}–{r.games - r.w}</span>
                   <Rate w={r.w} n={r.games} />
                 </li>

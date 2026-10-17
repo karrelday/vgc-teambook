@@ -1,9 +1,13 @@
 import MonImage from './MonImage'
 import { STATS, TERA_ENABLED, spreadText } from '../lib/model'
+import { finalStats, natureMods, useDex } from '../lib/dex'
 
 export default function MonCard({ mon, onOpen }) {
   const spread = spreadText(mon)
-  const hasStats = STATS.some(([k]) => mon.stats?.[k] != null)
+  const dex = useDex()
+  const { stats } = finalStats(mon, dex)
+  const [plus, minus] = natureMods(mon.nature)
+  const hasStats = STATS.some(([k]) => stats?.[k] != null)
   const meta = [
     ['Item', mon.item],
     ['Ability', mon.ability],
@@ -46,7 +50,9 @@ export default function MonCard({ mon, onOpen }) {
       {hasStats && (
         <div className="stat-row">
           {STATS.map(([k, l]) => (
-            <div key={k}><span>{l}</span><strong>{mon.stats?.[k] ?? '–'}</strong></div>
+            <div key={k} className={k === plus ? 'plus' : k === minus ? 'minus' : ''}>
+              <span>{l}</span><strong>{stats?.[k] ?? '–'}</strong>
+            </div>
           ))}
         </div>
       )}

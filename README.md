@@ -10,6 +10,10 @@ notes, version history, and a match log that turns into real stats.
 - **Stats.** Win rate per Pokémon brought and led, per lead pair, and against every Pokémon you've faced.
 - **Threats.** How to play into specific Pokémon, with your record against each filled in automatically.
 - **Share card.** Export the team as a PNG to post or send to friends.
+- **Auto stats.** Final Level 50 stats are calculated from base stats, Stat Points and nature, using Showdown's Pokédex data (`@pkmn/dex`), including the new Megas.
+- **Speed tiers.** Your team against your threats, the Pokémon you've faced, and any you add, with Tailwind, Trick Room and Choice Scarf.
+- **Tournaments.** Group games into tournaments with rounds, Bo3 sets and your placement.
+- **Tags and archive.** Tag teams by regulation or event and archive old ones without deleting them.
 
 Vite + React frontend, Express + MongoDB backend.
 

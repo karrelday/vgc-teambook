@@ -4,6 +4,7 @@ import cors from 'cors'
 import mongoose from 'mongoose'
 import teams from './routes/teams.js'
 import meta from './routes/meta.js'
+import dex from './routes/dex.js'
 
 const app = express()
 app.use(cors())
@@ -11,6 +12,7 @@ app.use(cors())
 app.use(express.json({ limit: '25mb' }))
 app.use('/api/teams', teams)
 app.use('/api', meta)
+app.use('/api', dex)
 
 app.use((err, req, res, next) => {
   console.error(err)

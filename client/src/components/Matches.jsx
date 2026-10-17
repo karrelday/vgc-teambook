@@ -1,22 +1,27 @@
 import { useState } from 'react'
 import { record, uid } from '../lib/model'
-import { currentVersion, matchesIn, monAt, newestFirst, rosterOf } from '../lib/stats'
+import { currentVersion, matchesIn, monAt, newestFirst, nextRound, rosterOf, tournamentSets } from '../lib/stats'
 import BringPicker from './BringPicker'
 import MonImage from './MonImage'
 import SpeciesInput from './SpeciesInput'
 import VersionFilter from './VersionFilter'
+import Tournaments, { TournamentForm, emptyTournament } from './Tournaments'
 import { Field, Modal, RecordBar } from './ui'
 
 const today = () => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
 const blankGame = () => ({
-  result: 'W', date: today(), event: '', opponentName: '',
+  result: 'W', date: today(), event: '', opponentName: '', tournamentId: '', round: '',
   brought: [], leads: [], opponentTeam: [], notes: '',
 })
 
 export default function Matches({ team, save, species, rememberSpecies }) {
   const [versionId, setVersionId] = useState('')
   const [editing, setEditing] = useState(null)
+  const [view, setView] = useState('games')
+  const [preset, setPreset] = useState(null) // tournament picked from a tournament card
   const cur = currentVersion(team)
+  const tournaments = team.tournaments || []
+  const tournamentOf = id => tournaments.find(t => t.id === id)
 
   const shown = newestFirst(matchesIn(team, versionId))
   const last = newestFirst(team.matches)[0]
@@ -27,14 +32,44 @@ export default function Matches({ team, save, species, rememberSpecies }) {
     .filter(([, r]) => r.total)
   const versionNumber = id => team.versions.find(v => v.id === id)?.number
 
+  // A tournament game's event is always the tournament's name
+  const withEvent = game => {
+    const t = tournamentOf(game.tournamentId)
+    return t ? { ...game, event: t.name } : { ...game, tournamentId: '', round: '' }
+  }
   const add = game => {
-    save({ ...team, matches: [...team.matches, { ...game, id: uid(), versionId: cur?.id }] })
+    save({ ...team, matches: [...team.matches, { ...withEvent(game), id: uid(), versionId: cur?.id }] })
     rememberSpecies(game.opponentTeam)
+    setPreset(null)
   }
   const update = game => {
-    save({ ...team, matches: team.matches.map(m => (m.id === game.id ? game : m)) })
+    save({ ...team, matches: team.matches.map(m => (m.id === game.id ? withEvent(game) : m)) })
     rememberSpecies(game.opponentTeam)
     setEditing(null)
+  }
+  const createTournament = t => save({ ...team, tournaments: [...tournaments, t] })
+
+  // New games carry the last game's tournament and round when it was logged today
+  const initialNew = () => {
+    const init = { ...blankGame(), event: last?.event || '' }
+    if (preset) {
+      // Continue an unfinished Bo3 set, otherwise move to the next round
+      const lastSet = tournamentSets(team, preset.id).at(-1)
+      const toWin = preset.bestOf === 1 ? 1 : 2
+      const done = !lastSet || lastSet.w >= toWin || lastSet.l >= toWin
+      const round = !lastSet ? 'R1' : done ? nextRound(lastSet.round) : lastSet.round
+      const carry = !done ? { opponentName: lastSet.opponentName, opponentTeam: [...lastSet.opponentTeam] } : {}
+      return { ...init, ...carry, tournamentId: preset.id, round, date: preset.date || init.date }
+    }
+    if (last?.tournamentId && tournamentOf(last.tournamentId) && last.date === today()) {
+      return { ...init, tournamentId: last.tournamentId, round: last.round || '' }
+    }
+    return init
+  }
+  const logFor = t => {
+    setPreset(t)
+    setView('games')
+    window.scrollTo({ top: document.querySelector('.tabs')?.offsetTop ?? 0, behavior: 'smooth' })
   }
   const remove = id => {
     if (confirm('Delete this game from the log?')) {
@@ -42,19 +77,40 @@ export default function Matches({ team, save, species, rememberSpecies }) {
     }
   }
 
+  const switcher = (
+    <div className="seg view-switch" role="tablist" aria-label="Matches view">
+      {[['games', 'Games'], ['tournaments', `Tournaments${tournaments.length ? ` (${tournaments.length})` : ''}`]].map(([v, l]) => (
+        <button key={v} role="tab" aria-selected={view === v} className={`btn sm ${view === v ? 'on' : 'ghost'}`}
+          onClick={() => setView(v)}>{l}</button>
+      ))}
+    </div>
+  )
+
+  if (view === 'tournaments') {
+    return (
+      <section className="matches">
+        {switcher}
+        <Tournaments team={team} save={save} onLog={logFor} />
+      </section>
+    )
+  }
+
   return (
     <section className="matches">
+      {switcher}
       <div className="matches-top">
         <div className="panel">
           <h2>Log a game</h2>
           {team.mons.length === 0 && <p className="hint">Add Pokémon to the team to track what you bring.</p>}
           <LogForm
-            key={team.matches.length}
+            key={`${team.matches.length}-${preset?.id || ''}`}
             roster={team.mons}
-            initial={{ ...blankGame(), event: last?.event || '' }}
+            initial={initialNew()}
             last={last}
             species={species}
             events={events}
+            tournaments={tournaments}
+            onCreateTournament={createTournament}
             onSubmit={add}
             submitLabel="Log game"
           />
@@ -90,6 +146,8 @@ export default function Matches({ team, save, species, rememberSpecies }) {
             const leads = (m.leads || []).map(id => monAt(team, m.versionId, id)).filter(Boolean)
             const back = (m.brought || []).filter(id => !m.leads?.includes(id)).map(id => monAt(team, m.versionId, id)).filter(Boolean)
             const v = versionNumber(m.versionId)
+            const t = tournamentOf(m.tournamentId)
+            const where = t ? [t.name, m.round].filter(Boolean).join(' ') : m.event
             return (
               <article className="match-row" key={m.id}>
                 <span className={`pill big ${m.result === 'W' ? 'win' : 'loss'}`}>{m.result}</span>
@@ -97,7 +155,7 @@ export default function Matches({ team, save, species, rememberSpecies }) {
                   <div className="match-head">
                     <p className="match-title">{m.opponentName || 'Unknown opponent'}</p>
                     <span className="muted small">
-                      {[m.date, m.event, team.versions.length > 1 && v ? `v${v}` : null].filter(Boolean).join(', ')}
+                      {[m.date, where, team.versions.length > 1 && v ? `v${v}` : null].filter(Boolean).join(', ')}
                     </span>
                   </div>
                   {(leads.length > 0 || back.length > 0) && (
@@ -133,6 +191,8 @@ export default function Matches({ team, save, species, rememberSpecies }) {
             initial={{ ...blankGame(), ...editing }}
             species={species}
             events={events}
+            tournaments={tournaments}
+            onCreateTournament={createTournament}
             onSubmit={update}
             submitLabel="Save changes"
           />
@@ -142,13 +202,28 @@ export default function Matches({ team, save, species, rememberSpecies }) {
   )
 }
 
-function LogForm({ roster, initial, last, species, events, onSubmit, submitLabel }) {
+function LogForm({ roster, initial, last, species, events, tournaments, onCreateTournament, onSubmit, submitLabel }) {
   const [g, setG] = useState(initial)
+  const [creating, setCreating] = useState(false)
   const set = (k, v) => setG(s => ({ ...s, [k]: v }))
+  const tournament = tournaments.find(t => t.id === g.tournamentId)
+  const sorted = [...tournaments].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
-  // Handy for Bo3: same player, same team preview
+  // Handy for Bo3: same player, same team preview, same round
   const sameOpponent = () =>
-    setG(s => ({ ...s, opponentName: last.opponentName || '', opponentTeam: [...(last.opponentTeam || [])], event: last.event || s.event }))
+    setG(s => ({
+      ...s,
+      opponentName: last.opponentName || '',
+      opponentTeam: [...(last.opponentTeam || [])],
+      event: last.event || s.event,
+      tournamentId: last.tournamentId || s.tournamentId,
+      round: last.tournamentId ? last.round || '' : s.round,
+    }))
+
+  const pickTournament = value => {
+    if (value === '__new') return setCreating(true)
+    setG(s => ({ ...s, tournamentId: value, round: value ? s.round || 'R1' : '' }))
+  }
 
   return (
     <form className="stack" onSubmit={e => { e.preventDefault(); onSubmit(g) }}>
@@ -164,12 +239,46 @@ function LogForm({ roster, initial, last, species, events, onSubmit, submitLabel
           <input type="date" value={g.date} onChange={e => set('date', e.target.value)} />
         </Field>
         <Field label="Event">
-          <input list="events" value={g.event} onChange={e => set('event', e.target.value)} placeholder="Ladder, locals, MBL" />
+          {tournament
+            ? <input value={tournament.name} disabled title="Set by the tournament" />
+            : <input list="events" value={g.event} onChange={e => set('event', e.target.value)} placeholder="Ladder, locals" />}
         </Field>
         <Field label="Opponent">
           <input value={g.opponentName} onChange={e => set('opponentName', e.target.value)} placeholder="Player name" />
         </Field>
       </div>
+
+      <div className="tourney-row">
+        <Field label="Tournament">
+          <select value={g.tournamentId || ''} onChange={e => pickTournament(e.target.value)}>
+            <option value="">Not a tournament game</option>
+            {sorted.map(t => <option key={t.id} value={t.id}>{t.name}{t.date ? ` (${t.date})` : ''}</option>)}
+            <option value="__new">New tournament…</option>
+          </select>
+        </Field>
+        {tournament && (
+          <div className="field">
+            <span>Round {tournament.bestOf !== 1 && <small className="muted">games with the same round form a set</small>}</span>
+            <div className="row nowrap">
+              <input value={g.round} onChange={e => set('round', e.target.value)} placeholder="R1, Top 8" aria-label="Round" />
+              <button type="button" className="btn sm" onClick={() => set('round', nextRound(g.round))}>Next round</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {creating && (
+        <TournamentForm
+          tournament={emptyTournament()}
+          isNew
+          onClose={() => setCreating(false)}
+          onSave={t => {
+            onCreateTournament(t)
+            setG(s => ({ ...s, tournamentId: t.id, round: 'R1' }))
+            setCreating(false)
+          }}
+        />
+      )}
 
       {roster.length > 0 && (
         <div className="field">

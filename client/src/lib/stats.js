@@ -147,3 +147,44 @@ export const newestFirst = matches =>
     .map((m, i) => [m, i])
     .sort((a, b) => (b[0].date || '').localeCompare(a[0].date || '') || b[1] - a[1])
     .map(([m]) => m)
+
+/* ---------- Tournaments ---------- */
+
+/** Games in a tournament grouped into sets by round (or opponent, when no round was typed). */
+export function tournamentSets(team, tournamentId) {
+  const sets = new Map()
+  team.matches.forEach((g, order) => {
+    if (g.tournamentId !== tournamentId) return
+    const key = norm(g.round) || (g.opponentName ? `opp:${norm(g.opponentName)}` : `game:${g.id}`)
+    const s = sets.get(key) || { key, order, round: g.round || '', opponentName: '', opponentTeam: [], games: [] }
+    s.games.push(g)
+    if (!s.opponentName && g.opponentName) s.opponentName = g.opponentName
+    if (!s.opponentTeam.length && g.opponentTeam?.length) s.opponentTeam = g.opponentTeam
+    sets.set(key, s)
+  })
+  return [...sets.values()]
+    .sort((a, b) => a.order - b.order)
+    .map(s => {
+      const w = s.games.filter(g => g.result === 'W').length
+      const l = s.games.length - w
+      return { ...s, w, l, result: w > l ? 'W' : l > w ? 'L' : 'T' }
+    })
+}
+
+export function tournamentSummary(team, tournamentId) {
+  const sets = tournamentSets(team, tournamentId)
+  const games = sets.flatMap(s => s.games)
+  return {
+    sets,
+    setW: sets.filter(s => s.result === 'W').length,
+    setL: sets.filter(s => s.result === 'L').length,
+    gameW: games.filter(g => g.result === 'W').length,
+    gameL: games.filter(g => g.result === 'L').length,
+  }
+}
+
+/** "R3" -> "R4", "Round 2" -> "Round 3". Top cut labels like "Top 8" are left alone. */
+export const nextRound = round => {
+  const m = (round || '').trim().match(/^((?:r|round|swiss)\s*)(\d+)$/i)
+  return m ? `${m[1]}${Number(m[2]) + 1}` : round || 'R1'
+}

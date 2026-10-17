@@ -54,6 +54,8 @@ const matchSchema = new Schema(
     event: String,
     opponentName: String,
     versionId: String,
+    tournamentId: String,
+    round: String,          // e.g. "R3", "Top 8"; games with the same round form a set
     brought: [String],      // up to 4 mon ids
     leads: [String],        // 2 of the brought mon ids
     opponentTeam: [String], // species from team preview
@@ -71,6 +73,18 @@ const threatSchema = new Schema(
   { _id: false }
 )
 
+const tournamentSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    date: String,
+    bestOf: { type: Number, enum: [1, 3], default: 3 },
+    placement: String,
+    notes: String,
+  },
+  { _id: false }
+)
+
 const teamSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -84,6 +98,10 @@ const teamSchema = new Schema(
     plans: [planSchema],
     matches: [matchSchema],
     threats: [threatSchema],
+    tournaments: [tournamentSchema],
+    speedTargets: [String], // extra Pokémon to compare against on the Speed tab
+    tags: [{ type: String, trim: true }],
+    archived: { type: Boolean, default: false },
     notes: { howItPlays: String, weaknesses: String, piloting: String },
   },
   { timestamps: true }

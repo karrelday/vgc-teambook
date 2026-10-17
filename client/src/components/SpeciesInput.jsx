@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MonImage from './MonImage'
+import { toId } from '../lib/dex'
 
 /** Chip input for species names, with type-ahead from Pokémon you've used before. */
 export default function SpeciesInput({ value, onChange, suggestions = [], max = 6, placeholder, autoFocus, label }) {
@@ -9,10 +10,12 @@ export default function SpeciesInput({ value, onChange, suggestions = [], max = 
 
   const q = text.trim().toLowerCase()
   const taken = new Set(value.map(v => v.toLowerCase()))
-  const matches = q
+  // Match ignoring spaces and punctuation, so "raichu mega y" finds Raichu-Mega-Y
+  const qid = toId(q)
+  const matches = qid
     ? suggestions
-        .filter(s => s.toLowerCase().includes(q) && !taken.has(s.toLowerCase()))
-        .sort((a, b) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q))
+        .filter(s => toId(s).includes(qid) && !taken.has(s.toLowerCase()))
+        .sort((a, b) => toId(b).startsWith(qid) - toId(a).startsWith(qid))
         .slice(0, 7)
     : []
   const exact = matches.some(m => m.toLowerCase() === q)

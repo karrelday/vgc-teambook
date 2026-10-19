@@ -9,7 +9,10 @@ async function request(url, options = {}) {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Request failed (${res.status})`)
+    const err = new Error(body.error || `Request failed (${res.status})`)
+    err.status = res.status
+    err.body = body
+    throw err
   }
   return res.status === 204 ? null : res.json()
 }
@@ -22,4 +25,6 @@ export const api = {
   remove: id => request(`${BASE}/${id}`, { method: 'DELETE' }),
   duplicate: id => request(`${BASE}/${id}/duplicate`, { method: 'POST' }),
   species: () => request('/api/species'),
+  calc: calcs => request('/api/calc', { method: 'POST', body: JSON.stringify({ calcs }) }),
+  calcMeta: () => request('/api/calc/meta'),
 }

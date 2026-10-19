@@ -85,6 +85,38 @@ const tournamentSchema = new Schema(
   { _id: false }
 )
 
+// A saved damage calc. Your own Pokémon are referenced by id so the calc follows spread changes.
+const calcSideSchema = new Schema(
+  {
+    source: { type: String, enum: ['mine', 'theirs'], default: 'theirs' },
+    monId: String,
+    species: String,
+    preset: { type: String, enum: ['auto', 'offense', 'bulk', 'none', 'custom'], default: 'auto' },
+    nature: String,
+    sp: statBlock,
+    item: String,
+    ability: String,
+    boost: { type: Number, min: -6, max: 6, default: 0 },
+  },
+  { _id: false }
+)
+
+const calcSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    attacker: calcSideSchema,
+    defender: calcSideSchema,
+    move: String,
+    field: {
+      singles: Boolean, helpingHand: Boolean, crit: Boolean, reflect: Boolean,
+      lightScreen: Boolean, friendGuard: Boolean, auroraVeil: Boolean,
+      weather: String, terrain: String,
+    },
+    note: String,
+  },
+  { _id: false }
+)
+
 const teamSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -99,7 +131,8 @@ const teamSchema = new Schema(
     matches: [matchSchema],
     threats: [threatSchema],
     tournaments: [tournamentSchema],
-    speedTargets: [String], // extra Pokémon to compare against on the Speed tab
+    speedTargets: [String],
+    calcs: [calcSchema], // extra Pokémon to compare against on the Speed tab
     tags: [{ type: String, trim: true }],
     archived: { type: Boolean, default: false },
     notes: { howItPlays: String, weaknesses: String, piloting: String },

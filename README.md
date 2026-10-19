@@ -14,6 +14,10 @@ notes, version history, and a match log that turns into real stats.
 - **Speed tiers.** Your team against your threats, the Pokémon you've faced, and any you add, with Tailwind, Trick Room and Choice Scarf.
 - **Tournaments.** Group games into tournaments with rounds, Bo3 sets and your placement.
 - **Tags and archive.** Tag teams by regulation or event and archive old ones without deleting them.
+- **Damage calcs.** Champions calcs (`@smogon/calc`, Champions mechanics) between your sets and any opponent, with field conditions. Saved calcs follow your spread changes.
+- **Type matchups.** Weakness grid for your team plus which types your moves can't hit super effectively.
+- **Matchup panel.** Type their team preview while logging and see speed, type matchups, threat notes, saved calcs and your past record against them.
+- **Safe saving.** A save made from an out-of-date copy (another tab or device) is refused and the newest copy is loaded, so nothing gets overwritten.
 
 Vite + React frontend, Express + MongoDB backend.
 

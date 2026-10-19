@@ -10,7 +10,7 @@ function build() {
   const out = []
   for (const s of Dex.species.all()) {
     if (!s.exists || s.isNonstandard === 'CAP' || s.isNonstandard === 'Custom' || s.num <= 0) continue
-    out.push({ name: s.name, types: s.types, base: s.baseStats })
+    out.push({ name: s.name, types: s.types, base: s.baseStats, abilities: Object.values(s.abilities) })
   }
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }

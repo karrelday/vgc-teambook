@@ -6,6 +6,7 @@ import MonImage from './MonImage'
 import SpeciesInput from './SpeciesInput'
 import VersionFilter from './VersionFilter'
 import Tournaments, { TournamentForm, emptyTournament } from './Tournaments'
+import MatchupPanel from './MatchupPanel'
 import { Field, Modal, RecordBar } from './ui'
 
 const today = () => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
@@ -14,11 +15,10 @@ const blankGame = () => ({
   brought: [], leads: [], opponentTeam: [], notes: '',
 })
 
-export default function Matches({ team, save, species, rememberSpecies }) {
+export default function Matches({ team, save, species, rememberSpecies, draft, setDraft }) {
   const [versionId, setVersionId] = useState('')
   const [editing, setEditing] = useState(null)
   const [view, setView] = useState('games')
-  const [preset, setPreset] = useState(null) // tournament picked from a tournament card
   const cur = currentVersion(team)
   const tournaments = team.tournaments || []
   const tournamentOf = id => tournaments.find(t => t.id === id)
@@ -38,9 +38,14 @@ export default function Matches({ team, save, species, rememberSpecies }) {
     return t ? { ...game, event: t.name } : { ...game, tournamentId: '', round: '' }
   }
   const add = game => {
-    save({ ...team, matches: [...team.matches, { ...withEvent(game), id: uid(), versionId: cur?.id }] })
+    // Drop any Pokémon removed from the team since the draft was started
+    const ids = new Set(team.mons.map(m => m.id))
+    const brought = game.brought.filter(id => ids.has(id))
+    const leads = game.leads.filter(id => ids.has(id))
+    const entry = { ...withEvent({ ...game, brought, leads }), id: uid(), versionId: cur?.id }
+    save({ ...team, matches: [...team.matches, entry] })
     rememberSpecies(game.opponentTeam)
-    setPreset(null)
+    setDraft(null)
   }
   const update = game => {
     save({ ...team, matches: team.matches.map(m => (m.id === game.id ? withEvent(game) : m)) })
@@ -52,25 +57,30 @@ export default function Matches({ team, save, species, rememberSpecies }) {
   // New games carry the last game's tournament and round when it was logged today
   const initialNew = () => {
     const init = { ...blankGame(), event: last?.event || '' }
-    if (preset) {
-      // Continue an unfinished Bo3 set, otherwise move to the next round
-      const lastSet = tournamentSets(team, preset.id).at(-1)
-      const toWin = preset.bestOf === 1 ? 1 : 2
-      const done = !lastSet || lastSet.w >= toWin || lastSet.l >= toWin
-      const round = !lastSet ? 'R1' : done ? nextRound(lastSet.round) : lastSet.round
-      const carry = !done ? { opponentName: lastSet.opponentName, opponentTeam: [...lastSet.opponentTeam] } : {}
-      return { ...init, ...carry, tournamentId: preset.id, round, date: preset.date || init.date }
-    }
     if (last?.tournamentId && tournamentOf(last.tournamentId) && last.date === today()) {
       return { ...init, tournamentId: last.tournamentId, round: last.round || '' }
     }
     return init
   }
+  // From a tournament card: continue an unfinished Bo3 set, otherwise move to the next round
+  const initialFor = t => {
+    const lastSet = tournamentSets(team, t.id).at(-1)
+    const toWin = t.bestOf === 1 ? 1 : 2
+    const done = !lastSet || lastSet.w >= toWin || lastSet.l >= toWin
+    const round = !lastSet ? 'R1' : done ? nextRound(lastSet.round) : lastSet.round
+    const carry = !done ? { opponentName: lastSet.opponentName, opponentTeam: [...lastSet.opponentTeam] } : {}
+    return { ...blankGame(), ...carry, tournamentId: t.id, round, date: t.date || today() }
+  }
   const logFor = t => {
-    setPreset(t)
+    // Keep anything already typed into the form; only point it at this tournament
+    setDraft(prev => (isEmptyDraft(prev) ? initialFor(t) : { ...prev, tournamentId: t.id, round: initialFor(t).round }))
     setView('games')
     window.scrollTo({ top: document.querySelector('.tabs')?.offsetTop ?? 0, behavior: 'smooth' })
   }
+
+  // The new-game form reads and writes the draft kept by the team page
+  const g = draft ?? initialNew()
+  const setG = update => setDraft(prev => (typeof update === 'function' ? update(prev ?? initialNew()) : update))
   const remove = id => {
     if (confirm('Delete this game from the log?')) {
       save({ ...team, matches: team.matches.filter(m => m.id !== id) })
@@ -100,12 +110,17 @@ export default function Matches({ team, save, species, rememberSpecies }) {
       {switcher}
       <div className="matches-top">
         <div className="panel">
-          <h2>Log a game</h2>
+          <div className="log-head">
+            <h2>Log a game</h2>
+            {!isEmptyDraft(draft) && (
+              <button type="button" className="btn ghost sm" onClick={() => setDraft(null)}>Clear form</button>
+            )}
+          </div>
           {team.mons.length === 0 && <p className="hint">Add Pokémon to the team to track what you bring.</p>}
           <LogForm
-            key={`${team.matches.length}-${preset?.id || ''}`}
+            value={g}
+            onChange={setG}
             roster={team.mons}
-            initial={initialNew()}
             last={last}
             species={species}
             events={events}
@@ -137,6 +152,8 @@ export default function Matches({ team, save, species, rememberSpecies }) {
           )}
         </div>
       </div>
+
+      {g.opponentTeam.length > 0 && <MatchupPanel team={team} preview={g.opponentTeam} />}
 
       <div className="match-list">
         {shown.length === 0 ? (
@@ -202,8 +219,14 @@ export default function Matches({ team, save, species, rememberSpecies }) {
   )
 }
 
-function LogForm({ roster, initial, last, species, events, tournaments, onCreateTournament, onSubmit, submitLabel }) {
-  const [g, setG] = useState(initial)
+const isEmptyDraft = d =>
+  !d || (!d.opponentTeam?.length && !d.brought?.length && !d.notes && !d.opponentName)
+
+/** Controlled when given value/onChange (the new-game draft), otherwise keeps its own state (editing). */
+function LogForm({ value, onChange, initial, roster, last, species, events, tournaments, onCreateTournament, onSubmit, submitLabel }) {
+  const [own, setOwn] = useState(initial)
+  const g = value ?? own
+  const setG = onChange ?? setOwn
   const [creating, setCreating] = useState(false)
   const set = (k, v) => setG(s => ({ ...s, [k]: v }))
   const tournament = tournaments.find(t => t.id === g.tournamentId)

@@ -3,6 +3,7 @@ import { emptyMon } from '../lib/model'
 import { currentVersion, norm, startNewVersion } from '../lib/stats'
 import MonCard from './MonCard'
 import MonEditor from './MonEditor'
+import TypeChart from './TypeChart'
 
 export default function Roster({ team, save }) {
   const [editing, setEditing] = useState(null)
@@ -80,6 +81,7 @@ export default function Roster({ team, save }) {
           onDelete={() => remove(editing.id)} onClose={() => setEditing(null)} />
       )}
 
+      <TypeChart mons={team.mons} />
     </section>
   )
 }

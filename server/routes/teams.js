@@ -29,12 +29,19 @@ router.post('/', async (req, res) => {
   res.status(201).json(await Team.create(data))
 })
 
+// Saves carry the updatedAt of the copy they were made from. If the team has been
+// saved since (another tab or device), the save is refused so it can't erase newer data.
 router.put('/:id', async (req, res) => {
-  const team = await Team.findByIdAndUpdate(req.params.id, clean(req.body), {
-    new: true,
-    runValidators: true,
-  })
-  team ? res.json(team) : notFound(res)
+  const filter = { _id: req.params.id }
+  const seen = req.body?.updatedAt ? new Date(req.body.updatedAt) : null
+  if (seen && !Number.isNaN(seen.getTime())) filter.updatedAt = seen
+
+  const team = await Team.findOneAndUpdate(filter, clean(req.body), { new: true, runValidators: true })
+  if (team) return res.json(team)
+
+  const current = await Team.findById(req.params.id)
+  if (!current) return notFound(res)
+  res.status(409).json({ error: 'This team was changed somewhere else.', team: current })
 })
 
 router.post('/:id/duplicate', async (req, res) => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { useDex } from '../lib/dex'
 import { record } from '../lib/model'
@@ -11,6 +11,7 @@ import Notes from './Notes'
 import Matches from './Matches'
 import Stats from './Stats'
 import Speed from './Speed'
+import Calcs from './Calcs'
 import VersionBar from './Versions'
 import ShareCard from './ShareCard'
 import { Modal } from './ui'
@@ -19,6 +20,7 @@ const TABS = [
   ['team', 'Team'],
   ['plans', 'Game plans'],
   ['speed', 'Speed'],
+  ['calcs', 'Calcs'],
   ['threats', 'Threats'],
   ['notes', 'Notes'],
   ['matches', 'Matches'],
@@ -30,26 +32,74 @@ export default function TeamView({ id }) {
   const [error, setError] = useState('')
   const [tab, setTab] = useState('team')
   const [status, setStatus] = useState('')
+  const [notice, setNotice] = useState('')
   const [modal, setModal] = useState(null)
   const [knownSpecies, setKnownSpecies] = useState([])
   const [allTags, setAllTags] = useState([])
 
+  // updatedAt of the last copy the server confirmed. Every save sends it, so a save
+  // made from an out-of-date copy (another tab or device) is refused instead of erasing newer data.
+  const rev = useRef(null)
+  const pending = useRef(null)
+  const running = useRef(false)
+
   useEffect(() => {
-    api.get(id).then(setTeam).catch(e => setError(e.message))
+    api.get(id)
+      .then(t => { rev.current = t.updatedAt; setTeam(t) })
+      .catch(e => setError(e.message))
     api.species().then(setKnownSpecies).catch(() => {})
   }, [id])
 
-  // Local state is the source of truth; every change is written straight to the API
-  const save = useCallback(async next => {
-    setTeam(next)
-    setStatus('Saving')
-    try {
-      await api.update(id, next)
-      setStatus('Saved')
-    } catch (e) {
-      setStatus(`Not saved: ${e.message}`)
+  // Saves go out one at a time; if several changes pile up, only the newest is sent
+  const flush = useCallback(async () => {
+    if (running.current) return
+    running.current = true
+    while (pending.current) {
+      const next = pending.current
+      pending.current = null
+      setStatus('Saving')
+      try {
+        const saved = await api.update(id, { ...next, updatedAt: rev.current })
+        rev.current = saved.updatedAt
+        if (!pending.current) { setStatus('Saved'); setNotice('') }
+      } catch (e) {
+        if (e.status === 409 && e.body?.team) {
+          pending.current = null
+          rev.current = e.body.team.updatedAt
+          setTeam(e.body.team)
+          setStatus('Reloaded')
+          setNotice("This team was changed in another tab or device, so the newest copy was loaded. Your last change wasn't saved, so redo it if you still want it.")
+        } else {
+          setStatus('Not saved')
+          setNotice(`Couldn't save: ${e.message}`)
+        }
+      }
     }
+    running.current = false
   }, [id])
+
+  // Local state updates instantly; the server catches up in the background
+  const save = useCallback(next => {
+    setTeam(next)
+    pending.current = next
+    flush()
+  }, [flush])
+
+  // The game you're logging survives tab switches and refreshes until you log it or clear it
+  const draftKey = `teambook:draft:${id}`
+  const [draft, setDraftState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(draftKey)) } catch { return null }
+  })
+  const setDraft = useCallback(update => {
+    setDraftState(prev => {
+      const next = typeof update === 'function' ? update(prev) : update
+      try {
+        if (next) localStorage.setItem(draftKey, JSON.stringify(next))
+        else localStorage.removeItem(draftKey)
+      } catch { /* storage unavailable: the draft still lives until the page closes */ }
+      return next
+    })
+  }, [draftKey])
 
   const rememberSpecies = useCallback(list => {
     setKnownSpecies(prev => {
@@ -89,7 +139,7 @@ export default function TeamView({ id }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
 
-  const tabProps = { team, save, species, rememberSpecies }
+  const tabProps = { team, save, species, rememberSpecies, draft, setDraft }
 
   // Tag suggestions come from every team
   const openInfo = () => {
@@ -139,8 +189,15 @@ export default function TeamView({ id }) {
         <button className="btn sm ghost" onClick={() => save({ ...team, archived: !team.archived })}>
           {team.archived ? 'Unarchive' : 'Archive team'}
         </button>
-        <span className={`status ${status.startsWith('Not') ? 'bad' : ''}`} aria-live="polite">{status}</span>
+        <span className={`status ${status === 'Saved' || status === 'Saving' ? '' : 'bad'}`} aria-live="polite">{status}</span>
       </div>
+
+      {notice && (
+        <div className="notice" role="alert">
+          <p>{notice}</p>
+          <button className="btn ghost sm" onClick={() => setNotice('')}>Dismiss</button>
+        </div>
+      )}
 
       <nav className="tabs" role="tablist">
         {TABS.map(([key, label]) => (
@@ -157,8 +214,9 @@ export default function TeamView({ id }) {
         {tab === 'team' && <Roster {...tabProps} />}
         {tab === 'plans' && <GamePlans {...tabProps} />}
         {tab === 'speed' && <Speed {...tabProps} />}
+        {tab === 'calcs' && <Calcs {...tabProps} />}
         {tab === 'threats' && <Threats {...tabProps} />}
-        {tab === 'notes' && <Notes {...tabProps} />}
+        {tab === 'notes' && <Notes {...tabProps} key={team.updatedAt} />}
         {tab === 'matches' && <Matches {...tabProps} />}
         {tab === 'stats' && <Stats {...tabProps} />}
       </div>

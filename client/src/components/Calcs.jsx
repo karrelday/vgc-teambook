@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { NATURES, STATS, spreadText, uid } from '../lib/model'
 import { emptyField, emptySide, sideSpecies, useCalcMeta, useCalcResults } from '../lib/calc'
 import { lookup, useDex } from '../lib/dex'
-import { usePersistentState } from '../lib/persist'
 import MonImage from './MonImage'
 import SpeciesInput from './SpeciesInput'
 import ItemIcon from './ItemIcon'
@@ -16,7 +15,7 @@ const TOGGLES = [
 ]
 const STAGES = [6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6]
 
-const newCalc = team => ({
+export const newCalc = team => ({
   id: uid(),
   attacker: { ...emptySide('mine'), monId: team.mons[0]?.id || '' },
   defender: emptySide('theirs'),
@@ -25,10 +24,10 @@ const newCalc = team => ({
   note: '',
 })
 
-export default function Calcs({ team, save, species }) {
+/** The calculator's inputs live in the parent, so the Speed list can load Pokémon into it. */
+export default function Calcs({ team, save, species, calc, setCalc }) {
   const meta = useCalcMeta()
   const dex = useDex()
-  const [calc, setCalc] = usePersistentState(`teambook:calc:${team._id}`, () => newCalc(team))
   const [note, setNote] = useState('')
   const set = (k, v) => setCalc(c => ({ ...c, [k]: v }))
 
@@ -46,7 +45,7 @@ export default function Calcs({ team, save, species }) {
   const remove = id => save({ ...team, calcs: saved.filter(c => c.id !== id) })
   const load = c => {
     setCalc({ ...c, id: uid() })
-    window.scrollTo({ top: document.querySelector('.tabs')?.offsetTop ?? 0, behavior: 'smooth' })
+    document.querySelector('.calc-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   if (meta.failed) return <div className="empty"><p>The damage calculator couldn't load. Check the API is running and up to date.</p></div>
@@ -54,6 +53,7 @@ export default function Calcs({ team, save, species }) {
   return (
     <section className="calcs">
       <div className="panel calc-panel">
+        <h2>Damage calc</h2>
         <div className="calc-sides">
           <SideEditor role="attacker" side={calc.attacker} onChange={v => set('attacker', v)} team={team} species={species} meta={meta} dex={dex} />
           <button type="button" className="btn ghost sm swap" onClick={swap} title="Swap attacker and defender">⇄ Swap</button>

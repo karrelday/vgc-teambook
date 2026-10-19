@@ -10,8 +10,7 @@ import Threats from './Threats'
 import Notes from './Notes'
 import Matches from './Matches'
 import Stats from './Stats'
-import Speed from './Speed'
-import Calcs from './Calcs'
+import Battle from './Battle'
 import VersionBar from './Versions'
 import ShareCard from './ShareCard'
 import { Modal } from './ui'
@@ -19,18 +18,28 @@ import { Modal } from './ui'
 const TABS = [
   ['team', 'Team'],
   ['plans', 'Game plans'],
-  ['speed', 'Speed'],
-  ['calcs', 'Calcs'],
+  ['battle', 'Speed & calcs'],
   ['threats', 'Threats'],
   ['notes', 'Notes'],
   ['matches', 'Matches'],
   ['stats', 'Stats'],
 ]
 
+const PANELS = {
+  team: Roster, plans: GamePlans, battle: Battle, threats: Threats,
+  notes: Notes, matches: Matches, stats: Stats,
+}
+
 export default function TeamView({ id }) {
   const [team, setTeam] = useState(null)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState('team')
+  const [tab, setTabState] = useState('team')
+  // Tabs stay loaded once opened, so switching back is instant and keeps what you typed
+  const [opened, setOpened] = useState(() => new Set(['team']))
+  const setTab = key => {
+    setTabState(key)
+    setOpened(prev => (prev.has(key) ? prev : new Set(prev).add(key)))
+  }
   const [status, setStatus] = useState('')
   const [notice, setNotice] = useState('')
   const [modal, setModal] = useState(null)
@@ -211,14 +220,15 @@ export default function TeamView({ id }) {
       </nav>
 
       <div className="tab-panel" role="tabpanel">
-        {tab === 'team' && <Roster {...tabProps} />}
-        {tab === 'plans' && <GamePlans {...tabProps} />}
-        {tab === 'speed' && <Speed {...tabProps} />}
-        {tab === 'calcs' && <Calcs {...tabProps} />}
-        {tab === 'threats' && <Threats {...tabProps} />}
-        {tab === 'notes' && <Notes {...tabProps} key={team.updatedAt} />}
-        {tab === 'matches' && <Matches {...tabProps} />}
-        {tab === 'stats' && <Stats {...tabProps} />}
+        {TABS.filter(([key]) => opened.has(key)).map(([key]) => {
+          const Panel = PANELS[key]
+          return (
+            <div key={key} hidden={tab !== key}>
+              {/* Notes reset to the saved text if the team is reloaded after a save conflict */}
+              <Panel {...tabProps} key={key === 'notes' ? team.updatedAt : key} />
+            </div>
+          )
+        })}
       </div>
 
       {modal === 'info' && (

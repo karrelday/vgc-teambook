@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { finalStats, lookup, speedBenchmarks, toId, useDex } from '../lib/dex'
+import { usePersistentState } from '../lib/persist'
 import { opponentStats } from '../lib/stats'
 import MonImage from './MonImage'
 import SpeciesInput from './SpeciesInput'
@@ -10,34 +10,48 @@ const ASSUME = [
   ['none', 'No investment', '0 SP, neutral nature'],
   ['min', 'Slowest', '0 SP, −Spe nature'],
 ]
+const STAGES = [6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6]
+
+const DEFAULTS = {
+  twYou: false, twThem: false, trickRoom: false, assume: 'max',
+  withThreats: true, withFaced: true, stages: {},
+}
 
 const hasScarf = mon => /choice\s*scarf/i.test(mon.item || '')
-
+const stageMult = n => (n >= 0 ? (2 + n) / 2 : 2 / (2 - n))
+const fmtStage = n => (n > 0 ? `+${n}` : `${n}`)
 const names = list => (list.length > 3 ? `${list.slice(0, 3).join(', ')} +${list.length - 3}` : list.join(', '))
 
-export default function Speed({ team, save, species }) {
+/** Speed after stat stages, Choice Scarf and Tailwind, in the order the games apply them. */
+function effectiveSpeed(raw, { stage = 0, scarf = false, tailwind = false }) {
+  let s = Math.floor(raw * stageMult(stage))
+  if (scarf) s = Math.floor(s * 1.5)
+  if (tailwind) s *= 2
+  return s
+}
+
+export default function Speed({ team, save, species, onPick }) {
   const dex = useDex()
-  const [tw, setTw] = useState({ you: false, them: false })
-  const [trickRoom, setTrickRoom] = useState(false)
-  const [assume, setAssume] = useState('max')
-  const [withFaced, setWithFaced] = useState(true)
+  // Settings and stages survive tab switches and refreshes, so they hold up mid-game
+  const [opts, setOpts] = usePersistentState(`teambook:speed:${team._id}`, DEFAULTS)
+  const o = { ...DEFAULTS, ...opts }
+  const set = (k, v) => setOpts(p => ({ ...DEFAULTS, ...p, [k]: v }))
+  const setStage = (key, n) => setOpts(p => ({ ...DEFAULTS, ...p, stages: { ...(p?.stages || {}), [key]: n } }))
   const targets = team.speedTargets || []
 
   if (!dex.loaded) return <p className="muted">Loading Pokédex</p>
 
   /* ----- Your side ----- */
   const yours = team.mons.map(mon => {
-    const { stats } = finalStats(mon, dex)
-    const raw = stats?.spe
+    const raw = finalStats(mon, dex).stats?.spe
     if (raw == null) return { side: 'you', key: mon.id, mon, speed: null }
-    let speed = raw
-    const tags = []
-    if (hasScarf(mon)) { speed = Math.floor(speed * 1.5); tags.push('Scarf') }
-    if (tw.you) { speed *= 2; tags.push('Tailwind') }
-    return { side: 'you', key: mon.id, mon, speed, raw, tags }
+    const stage = o.stages[mon.id] || 0
+    const scarf = hasScarf(mon)
+    const tags = [stage ? fmtStage(stage) : null, scarf ? 'Scarf' : null, o.twYou ? 'Tailwind' : null].filter(Boolean)
+    return { side: 'you', key: mon.id, mon, stage, speed: effectiveSpeed(raw, { stage, scarf, tailwind: o.twYou }), tags }
   })
 
-  /* ----- Their side: added targets, threats, and Pokémon you've faced ----- */
+  /* ----- Their side: added Pokémon, threats, and Pokémon you've faced ----- */
   const sources = new Map()
   const add = (name, label) => {
     const id = toId(name)
@@ -45,13 +59,13 @@ export default function Speed({ team, save, species }) {
     if (sources.has(id)) sources.get(id).labels.push(label)
     else sources.set(id, { name: name.trim(), labels: [label] })
   }
-  targets.forEach(n => add(n, 'Added'))
-  ;(team.threats || []).forEach(t => add(t.species, 'Threat'))
-  if (withFaced) {
+  targets.forEach(n => add(n, 'added'))
+  if (o.withThreats) (team.threats || []).forEach(t => add(t.species, 'threat'))
+  if (o.withFaced) {
     opponentStats(team.matches).rows
       .sort((a, b) => b.games - a.games)
       .slice(0, 12)
-      .forEach(r => add(r.species, `Faced ${r.games}×`))
+      .forEach(r => add(r.species, `faced ${r.games}×`))
   }
 
   const theirs = []
@@ -59,61 +73,70 @@ export default function Speed({ team, save, species }) {
   for (const [id, src] of sources) {
     const entry = lookup(dex, src.name)
     if (!entry) { unknown.push(src.name); continue }
-    let speed = speedBenchmarks(entry.base.spe)[assume]
-    if (tw.them) speed *= 2
-    theirs.push({ side: 'them', key: id, species: entry.name, base: entry.base.spe, speed, labels: src.labels })
+    const stage = o.stages[`them:${id}`] || 0
+    const speed = effectiveSpeed(speedBenchmarks(entry.base.spe)[o.assume], { stage, tailwind: o.twThem })
+    theirs.push({ side: 'them', key: `them:${id}`, species: entry.name, base: entry.base.spe, stage, speed, labels: src.labels })
   }
 
   /* ----- Ladder: fastest first, or slowest first under Trick Room ----- */
   const ranked = [...yours.filter(r => r.speed != null), ...theirs].sort(
     (a, b) =>
-      (trickRoom ? a.speed - b.speed : b.speed - a.speed) ||
+      (o.trickRoom ? a.speed - b.speed : b.speed - a.speed) ||
       (a.side === b.side ? 0 : a.side === 'you' ? -1 : 1)
   )
-  const before = (a, b) => (trickRoom ? a < b : a > b)
-  const noteFor = r => {
-    const ahead = theirs.filter(t => before(r.speed, t.speed))
-    const ties = theirs.filter(t => t.speed === r.speed)
-    const behind = theirs.filter(t => before(t.speed, r.speed))
-    return { ahead, ties, behind }
-  }
+  const before = (a, b) => (o.trickRoom ? a < b : a > b)
+  const noteFor = r => ({
+    ahead: theirs.filter(t => before(r.speed, t.speed)),
+    ties: theirs.filter(t => t.speed === r.speed),
+    behind: theirs.filter(t => before(t.speed, r.speed)),
+  })
   const missing = yours.filter(r => r.speed == null)
+  const anyStage = Object.values(o.stages).some(Boolean)
 
-  const setTargets = list => save({ ...team, speedTargets: list })
+  const toggle = (k, label) => (
+    <button type="button" aria-pressed={o[k]} className={`btn sm ${o[k] ? 'on' : 'ghost'}`} onClick={() => set(k, !o[k])}>{label}</button>
+  )
 
   return (
     <section className="speed">
       <div className="speed-controls panel">
+        <h2>Speed</h2>
         <div className="control-row">
           <span className="control-label">Field</span>
           <div className="seg">
-            <button type="button" aria-pressed={tw.you} className={`btn sm ${tw.you ? 'on' : 'ghost'}`}
-              onClick={() => setTw(t => ({ ...t, you: !t.you }))}>Your Tailwind</button>
-            <button type="button" aria-pressed={tw.them} className={`btn sm ${tw.them ? 'on' : 'ghost'}`}
-              onClick={() => setTw(t => ({ ...t, them: !t.them }))}>Their Tailwind</button>
-            <button type="button" aria-pressed={trickRoom} className={`btn sm ${trickRoom ? 'on' : 'ghost'}`}
-              onClick={() => setTrickRoom(v => !v)}>Trick Room</button>
+            {toggle('twYou', 'Your Tailwind')}
+            {toggle('twThem', 'Their Tailwind')}
+            {toggle('trickRoom', 'Trick Room')}
           </div>
         </div>
         <div className="control-row">
           <span className="control-label">Assume they run</span>
           <div className="seg" role="radiogroup" aria-label="Opponent speed investment">
             {ASSUME.map(([v, l, hint]) => (
-              <button key={v} type="button" role="radio" aria-checked={assume === v} title={hint}
-                className={`btn sm ${assume === v ? 'on' : 'ghost'}`} onClick={() => setAssume(v)}>{l}</button>
+              <button key={v} type="button" role="radio" aria-checked={o.assume === v} title={hint}
+                className={`btn sm ${o.assume === v ? 'on' : 'ghost'}`} onClick={() => set('assume', v)}>{l}</button>
             ))}
           </div>
-          <span className="hint">{ASSUME.find(a => a[0] === assume)[2]}</span>
+          <span className="hint">{ASSUME.find(a => a[0] === o.assume)[2]}</span>
         </div>
         <div className="control-row wide">
           <span className="control-label">Compare against</span>
           <div className="grow">
-            <SpeciesInput label="Pokémon to compare against" value={targets} onChange={setTargets}
+            <SpeciesInput label="Pokémon to compare against" value={targets} onChange={list => save({ ...team, speedTargets: list })}
               suggestions={species} max={20} placeholder="Add a Pokémon, press Enter" />
-            <label className="check">
-              <input type="checkbox" checked={withFaced} onChange={e => setWithFaced(e.target.checked)} />
-              Include your threats and the Pokémon you've faced most
-            </label>
+            <div className="row">
+              <label className="check">
+                <input type="checkbox" checked={o.withThreats} onChange={e => set('withThreats', e.target.checked)} />
+                Your threats
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={o.withFaced} onChange={e => set('withFaced', e.target.checked)} />
+                Pokémon you've faced most
+              </label>
+              {anyStage && (
+                <button type="button" className="btn ghost sm" onClick={() => set('stages', {})}>Reset all stages</button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -124,11 +147,8 @@ export default function Speed({ team, save, species }) {
           Fix the species name or type its final stats in the Team tab.
         </p>
       )}
-
       {theirs.length === 0 && (
-        <p className="hint">
-          Add Pokémon above, list threats, or log games with their team preview to see how your team lines up.
-        </p>
+        <p className="hint">Add Pokémon above, list threats, or log games with their team preview to see how your team lines up.</p>
       )}
 
       <ol className="ladder">
@@ -139,24 +159,38 @@ export default function Speed({ team, save, species }) {
               <MonImage mon={r.mon} className="md" />
               <div className="rung-body">
                 <p className="rung-name">{r.mon.species}{r.tags.length > 0 && <span className="rung-tags">{r.tags.join(' + ')}</span>}</p>
-                {theirs.length > 0 && <YourNote {...noteFor(r)} total={theirs.length} trickRoom={trickRoom} />}
+                {theirs.length > 0 && <YourNote {...noteFor(r)} total={theirs.length} trickRoom={o.trickRoom} />}
               </div>
+              <StageSelect value={r.stage} onChange={n => setStage(r.key, n)} label={`Your ${r.mon.species}`} />
             </li>
           ) : (
             <li key={r.key} className="rung them">
               <span className="spd">{r.speed}</span>
               <MonImage mon={{ species: r.species }} className="sm" />
-              <p className="rung-name">{r.species}</p>
-              <span className="rung-meta">Base {r.base}, {r.labels.join(', ').toLowerCase()}</span>
+              <div className="rung-body">
+                <p className="rung-name">{r.species}{r.stage !== 0 && <span className="rung-tags">{fmtStage(r.stage)}</span>}</p>
+                <span className="rung-meta">Base {r.base}, {r.labels.join(', ')}</span>
+              </div>
+              <div className="rung-actions">
+                {onPick && <button type="button" className="btn ghost sm" onClick={() => onPick(r.species)} title={`Load ${r.species} into the calculator`}>Calc</button>}
+                <StageSelect value={r.stage} onChange={n => setStage(r.key, n)} label={`Their ${r.species}`} />
+              </div>
             </li>
           )
         )}
       </ol>
 
-      {unknown.length > 0 && (
-        <p className="hint">Not in the Pokédex, so left out: {unknown.join(', ')}.</p>
-      )}
+      {unknown.length > 0 && <p className="hint">Not in the Pokédex, so left out: {unknown.join(', ')}.</p>}
     </section>
+  )
+}
+
+function StageSelect({ value, onChange, label }) {
+  return (
+    <select className={`stage ${value > 0 ? 'up' : value < 0 ? 'down' : ''}`} value={value}
+      onChange={e => onChange(Number(e.target.value))} aria-label={`${label} Speed stage`} title="Speed stage">
+      {STAGES.map(n => <option key={n} value={n}>{n === 0 ? '±0' : fmtStage(n)}</option>)}
+    </select>
   )
 }
 

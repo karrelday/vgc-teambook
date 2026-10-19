@@ -26,5 +26,5 @@ export const api = {
   duplicate: id => request(`${BASE}/${id}/duplicate`, { method: 'POST' }),
   species: () => request('/api/species'),
   calc: calcs => request('/api/calc', { method: 'POST', body: JSON.stringify({ calcs }) }),
-  calcMeta: () => request('/api/calc/meta'),
+  calcMeta: () => request('/api/calc/meta?v=4.1'),
 }

@@ -5,6 +5,8 @@ import { lookup, useDex } from '../lib/dex'
 import { usePersistentState } from '../lib/persist'
 import MonImage from './MonImage'
 import SpeciesInput from './SpeciesInput'
+import ItemIcon from './ItemIcon'
+import { useLearnset } from '../lib/learnset'
 
 const WEATHER = ['', 'Sun', 'Rain', 'Sand', 'Snow']
 const TERRAIN = ['', 'Electric', 'Grassy', 'Psychic', 'Misty']
@@ -112,6 +114,7 @@ export default function Calcs({ team, save, species }) {
                   {c.note && <p className="small">{c.note}</p>}
                   {r && !r.ok && <p className="small error">{r.error}</p>}
                   {r?.ok && <p className="small muted">{r.desc}</p>}
+                  {r?.ok && r.warnings?.length > 0 && <p className="small warn">{r.warnings.join('. ')}</p>}
                 </div>
                 <div className="sc-num">
                   {r?.ok && (
@@ -155,6 +158,9 @@ function Result({ result, stale }) {
         <div className="hp-roll" style={{ width: `${hi - lo}%` }} />
       </div>
       <p className="small muted">{result.desc}</p>
+      {result.warnings?.length > 0 && (
+        <ul className="calc-warnings">{result.warnings.map(w => <li key={w}>{w}</li>)}</ul>
+      )}
     </div>
   )
 }
@@ -190,7 +196,9 @@ function SideEditor({ role, side, onChange, team, species, meta, dex }) {
           </div>
           {mon ? (
             <p className="small set-line">
-              <strong>{mon.species}</strong> {[mon.nature, spreadText(mon) && `${spreadText(mon)} SP`, mon.item, mon.ability].filter(Boolean).join(', ')}
+              <strong>{mon.species}</strong>
+              {mon.item && <ItemIcon item={mon.item} />}
+              {[mon.nature, spreadText(mon) && `${spreadText(mon)} SP`, mon.item, mon.ability].filter(Boolean).join(', ')}
             </p>
           ) : <p className="small muted">Pick one of your Pokémon.</p>}
         </>
@@ -208,13 +216,16 @@ function SideEditor({ role, side, onChange, team, species, meta, dex }) {
               </select>
             </label>
             <label className="inline-select">Item
-              <input list="calc-items" value={side.item} onChange={e => set('item', e.target.value)} placeholder="None" />
+              <span className="with-icon">
+                <ItemIcon item={side.item} />
+                <input list="calc-items" value={side.item} onChange={e => set('item', e.target.value)} placeholder="None" />
+              </span>
             </label>
             {entry?.abilities?.length > 1 && (
               <label className="inline-select">Ability
                 <select value={side.ability} onChange={e => set('ability', e.target.value)}>
-                  <option value="">{entry.abilities[0]}</option>
-                  {entry.abilities.slice(1).map(a => <option key={a} value={a}>{a}</option>)}
+                  <option value="">{entry.abilities[0]}{entry.abilities[0] === entry.hidden ? ' (hidden)' : ''}</option>
+                  {entry.abilities.slice(1).map(a => <option key={a} value={a}>{a}{a === entry.hidden ? ' (hidden)' : ''}</option>)}
                 </select>
               </label>
             )}
@@ -250,6 +261,10 @@ function SideEditor({ role, side, onChange, team, species, meta, dex }) {
 
 function MovePicker({ calc, team, meta, onChange }) {
   const mon = calc.attacker.source === 'mine' ? team.mons.find(m => m.id === calc.attacker.monId) : null
+  const species = sideSpecies(calc.attacker, team)
+  const { learnset, canLearn } = useLearnset(species)
+  // Suggest the attacker's Champions movepool when known, otherwise every damaging move
+  const pool = (learnset ? learnset.moves : meta.moves).filter(m => m.category !== 'Status')
   // Only damaging moves the calc knows about get a button
   const own = (mon?.moves || []).filter(Boolean).filter(n => {
     const mv = meta.movesByName[n.toLowerCase()]
@@ -265,8 +280,11 @@ function MovePicker({ calc, team, meta, onChange }) {
       <input list="calc-moves" value={own.includes(calc.move) ? '' : calc.move} onChange={e => onChange(e.target.value)}
         placeholder={own.length ? 'Or another move' : 'Type a move'} aria-label="Move" />
       <datalist id="calc-moves">
-        {meta.moves.filter(m => m.category !== 'Status').map(m => <option key={m.name} value={m.name} />)}
+        {pool.map(m => <option key={m.name} value={m.name} />)}
       </datalist>
+      {calc.move && !canLearn(calc.move) && (
+        <span className="hint warn">{species} can't learn {calc.move} in Champions</span>
+      )}
     </div>
   )
 }

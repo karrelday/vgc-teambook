@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import calcPkg from '@smogon/calc'
+import { Dex } from '@pkmn/dex'
+import { Icons } from '@pkmn/img'
 
 const { calculate, Generations, Pokemon, Move, Field } = calcPkg
 const router = Router()
@@ -17,9 +19,15 @@ router.get('/calc/meta', (req, res) => {
       .map(m => ({ name: m.name, type: m.type, category: m.category, bp: m.basePower || 0 }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     items: [...gen.items].map(i => i.name).sort(),
+    // Position of each item on Showdown's item icon sheet
+    itemIcons: Object.fromEntries([...gen.items].map(i => {
+      const icon = Icons.getItem(i.name)
+      return [i.name, [icon.left, icon.top]]
+    })),
+    itemSheet: Icons.getItem('Life Orb').url,
     abilities: [...gen.abilities].map(a => a.name).sort(),
   }
-  res.set('Cache-Control', 'public, max-age=86400').json(meta)
+  res.set('Cache-Control', 'no-cache').json(meta)
 })
 
 /* Spread presets for opponents you only know the species of */
@@ -38,9 +46,29 @@ function presetSpread(preset, role, move) {
   return null
 }
 
-function makeMon(side, role, move) {
+// Abilities a species can really have (the calc's own data only keeps the first one)
+const legalAbilities = species => {
+  const s = Dex.species.get(species)
+  return s?.exists ? Object.values(s.abilities) : []
+}
+
+function makeMon(side, role, move, warnings) {
   if (!gen.species.get(toId(side.species))) {
     throw new Error(`${side.species || 'That Pokémon'} isn't in the Champions data`)
+  }
+  // The calc silently ignores items and abilities it doesn't know, so say so instead
+  if (side.item && !gen.items.get(toId(side.item))) {
+    warnings.push(`${side.item} isn't a Champions item, so it was ignored`)
+    side = { ...side, item: '' }
+  }
+  if (side.ability) {
+    const legal = legalAbilities(side.species)
+    if (!gen.abilities.get(toId(side.ability))) {
+      warnings.push(`${side.ability} isn't an ability the calc knows, so ${side.species} used its default`)
+      side = { ...side, ability: '' }
+    } else if (legal.length && !legal.some(a => toId(a) === toId(side.ability))) {
+      warnings.push(`${side.species} can't have ${side.ability}, but the calc used it anyway`)
+    }
   }
   const p = presetSpread(side.preset, role, move)
   const opts = {
@@ -59,8 +87,9 @@ function runOne({ attacker, defender, move: moveName, field = {} }) {
   const move = new Move(gen, moveName, { isCrit: !!field.crit })
   if (move.category === 'Status') throw new Error(`${move.name} is a status move, so it does no damage`)
 
-  const atk = makeMon(attacker, 'attacker', move)
-  const def = makeMon(defender, 'defender', move)
+  const warnings = []
+  const atk = makeMon(attacker, 'attacker', move, warnings)
+  const def = makeMon(defender, 'defender', move, warnings)
   const f = new Field({
     gameType: field.singles ? 'Singles' : 'Doubles',
     weather: field.weather || undefined,
@@ -100,6 +129,7 @@ function runOne({ attacker, defender, move: moveName, field = {} }) {
     defenderAbility: def.ability || '',
     moveType: move.type,
     category: move.category,
+    warnings,
   }
 }
 

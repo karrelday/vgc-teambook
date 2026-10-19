@@ -3,6 +3,9 @@ import { Field, Modal } from './ui'
 import ImagePicker from './ImagePicker'
 import { NATURES, STATS, TYPES, TERA_ENABLED, SP_MAX_STAT, SP_MAX_TOTAL, spreadTotal } from '../lib/model'
 import { calcStats, lookup, natureMods, useDex } from '../lib/dex'
+import { useCalcMeta } from '../lib/calc'
+import ItemIcon, { useIsChampionsItem } from './ItemIcon'
+import { useLearnset } from '../lib/learnset'
 
 export default function MonEditor({ mon, isNew, onSave, onDelete, onClose }) {
   const [draft, setDraft] = useState(() => ({
@@ -27,7 +30,18 @@ export default function MonEditor({ mon, isNew, onSave, onDelete, onClose }) {
   const auto = entry ? calcStats(entry.base, draft.spread, draft.nature) : null
   const [plus, minus] = natureMods(draft.nature)
   // Calculated stats are saved too, so older views and exports always have numbers
-  const submit = () => onSave(auto ? { ...draft, stats: auto } : draft)
+  const meta = useCalcMeta()
+  const isChampionsItem = useIsChampionsItem()
+  const { learnset, canLearn } = useLearnset(draft.species)
+  const badMoves = draft.moves.filter(m => !canLearn(m))
+  // With a known species the ability is a dropdown; an empty one means its first ability
+  const abilities = entry?.abilities || []
+  const ability = draft.ability || abilities[0] || ''
+  const abilityOk = !abilities.length || abilities.some(a => a.toLowerCase() === ability.toLowerCase())
+  const submit = () => {
+    const out = { ...draft, ability: abilities.length ? ability : draft.ability }
+    onSave(auto ? { ...out, stats: auto } : out)
+  }
 
   const total = spreadTotal(draft)
   const overStat = STATS.some(([k]) => (draft.spread[k] || 0) > SP_MAX_STAT)
@@ -50,10 +64,26 @@ export default function MonEditor({ mon, isNew, onSave, onDelete, onClose }) {
               <input value={draft.nickname || ''} onChange={e => set('nickname', e.target.value)} />
             </Field>
             <Field label="Item">
-              <input value={draft.item || ''} onChange={e => set('item', e.target.value)} placeholder="Sablenite" />
+              <div className="with-icon">
+                <ItemIcon item={draft.item} />
+                <input list="champions-items" value={draft.item || ''} onChange={e => set('item', e.target.value)} placeholder="Sablenite" />
+              </div>
+              {!isChampionsItem(draft.item) && (
+                <small className="hint warn">Not a Champions item, so calcs ignore it.</small>
+              )}
             </Field>
             <Field label="Ability">
-              <input value={draft.ability || ''} onChange={e => set('ability', e.target.value)} placeholder="Prankster" />
+              {abilities.length ? (
+                <select value={ability} onChange={e => set('ability', e.target.value)}>
+                  {!abilityOk && <option value={ability}>{ability} (not one of {draft.species}'s)</option>}
+                  {abilities.map(a => (
+                    <option key={a} value={a}>{a}{a === entry.hidden ? ' (hidden)' : ''}</option>
+                  ))}
+                </select>
+              ) : (
+                <input value={draft.ability || ''} onChange={e => set('ability', e.target.value)} placeholder="Prankster" />
+              )}
+              {!abilityOk && <small className="hint warn">{draft.species} can't have {ability}. Pick one of its abilities.</small>}
             </Field>
             <Field label="Nature">
               <input list="natures" value={draft.nature || ''} onChange={e => set('nature', e.target.value)} />
@@ -70,9 +100,18 @@ export default function MonEditor({ mon, isNew, onSave, onDelete, onClose }) {
           <legend>Moves</legend>
           <div className="move-inputs">
             {draft.moves.map((m, i) => (
-              <input key={i} value={m} onChange={e => setMove(i, e.target.value)} aria-label={`Move ${i + 1}`} placeholder={`Move ${i + 1}`} />
+              <input key={i} value={m} list="learnset-moves" onChange={e => setMove(i, e.target.value)}
+                className={canLearn(m) ? '' : 'over'} aria-label={`Move ${i + 1}`} placeholder={`Move ${i + 1}`} />
             ))}
           </div>
+          {learnset && (
+            <p className={`hint ${badMoves.length ? 'warn' : ''}`}>
+              {badMoves.length
+                ? `${draft.species} can't learn ${badMoves.join(', ')} in Champions.`
+                : `Suggestions are ${draft.species}'s ${learnset.moves.length} Champions moves${learnset.from !== learnset.species ? ` (from ${learnset.from})` : ''}.`}
+            </p>
+          )}
+          <datalist id="learnset-moves">{(learnset?.moves || []).map(mv => <option key={mv.name} value={mv.name} />)}</datalist>
         </fieldset>
 
         <fieldset>
@@ -130,6 +169,7 @@ export default function MonEditor({ mon, isNew, onSave, onDelete, onClose }) {
           </div>
         </div>
 
+        <datalist id="champions-items">{meta.items.map(n => <option key={n} value={n} />)}</datalist>
         <datalist id="dex-species">{dex.names.map(n => <option key={n} value={n} />)}</datalist>
         <datalist id="types">{TYPES.map(t => <option key={t} value={t} />)}</datalist>
         <datalist id="natures">{NATURES.map(n => <option key={n} value={n} />)}</datalist>

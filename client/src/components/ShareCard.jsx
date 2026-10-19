@@ -3,6 +3,7 @@ import { toBlob } from 'html-to-image'
 import { record, spreadText } from '../lib/model'
 import { currentVersion } from '../lib/stats'
 import MonImage from './MonImage'
+import ItemIcon from './ItemIcon'
 import { Modal } from './ui'
 
 const W = 1200
@@ -105,7 +106,7 @@ export default function ShareCard({ team, onClose }) {
                       <MonImage mon={mon} proxy className="sc-sprite" />
                       <div className="sc-info">
                         <h2>{mon.species}</h2>
-                        {mon.item && <p className="sc-item">{mon.item}</p>}
+                        {mon.item && <p className="sc-item"><ItemIcon item={mon.item} proxy className="sc-item-icon" />{mon.item}</p>}
                         <p className="sc-sub">{[mon.ability, mon.nature].filter(Boolean).join('  /  ')}</p>
                         <ul className="sc-moves">
                           {(mon.moves || []).filter(Boolean).map((m, j) => <li key={j}>{m}</li>)}

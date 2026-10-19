@@ -6,6 +6,7 @@ import teams from './routes/teams.js'
 import meta from './routes/meta.js'
 import dex from './routes/dex.js'
 import calc from './routes/calc.js'
+import learnsets from './routes/learnsets.js'
 
 const app = express()
 app.use(cors())
@@ -15,6 +16,7 @@ app.use('/api/teams', teams)
 app.use('/api', meta)
 app.use('/api', dex)
 app.use('/api', calc)
+app.use('/api', learnsets)
 
 app.use((err, req, res, next) => {
   console.error(err)

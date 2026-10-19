@@ -11,7 +11,7 @@ const listeners = new Set()
 let loading = null
 
 function load() {
-  loading ||= fetch('/api/dex')
+  loading ||= fetch('/api/dex?v=4.1')
     .then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
     .then(list => {
       const byId = {}

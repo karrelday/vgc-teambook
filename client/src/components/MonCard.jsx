@@ -1,10 +1,13 @@
 import MonImage from './MonImage'
+import ItemIcon from './ItemIcon'
+import { useLearnset } from '../lib/learnset'
 import { STATS, TERA_ENABLED, spreadText } from '../lib/model'
 import { finalStats, natureMods, useDex } from '../lib/dex'
 
 export default function MonCard({ mon, onOpen }) {
   const spread = spreadText(mon)
   const dex = useDex()
+  const { canLearn } = useLearnset(mon.species)
   const { stats } = finalStats(mon, dex)
   const [plus, minus] = natureMods(mon.nature)
   const hasStats = STATS.some(([k]) => stats?.[k] != null)
@@ -32,7 +35,7 @@ export default function MonCard({ mon, onOpen }) {
           {meta.length > 0 && (
             <dl className="mon-meta">
               {meta.map(([k, v]) => (
-                <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+                <div key={k}><dt>{k}</dt><dd>{k === 'Item' && <ItemIcon item={v} />}{v}</dd></div>
               ))}
             </dl>
           )}
@@ -41,7 +44,9 @@ export default function MonCard({ mon, onOpen }) {
 
       {mon.moves?.some(Boolean) && (
         <ul className="moves">
-          {mon.moves.filter(Boolean).map((m, i) => <li key={i}>{m}</li>)}
+          {mon.moves.filter(Boolean).map((m, i) => (
+            <li key={i} className={canLearn(m) ? '' : 'illegal'} title={canLearn(m) ? undefined : `${mon.species} can't learn ${m} in Champions`}>{m}</li>
+          ))}
         </ul>
       )}
 
